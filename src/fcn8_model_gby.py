@@ -23,7 +23,7 @@ import util
 #from fcn8_model import get_fcn8_model_def
 #from crfrnn_model import get_crfrnn_model_def
 
-RES_DIR = "/storage/gby/semseg/"
+RES_DIR = "/storage/cfmata/deeplab/"
 
 nb_classes = 21
 INPUT_SIZE = None# None # 496 # 510, 500
