@@ -257,9 +257,7 @@ def fcn_VGG16_32s_crfrnn(INPUT_SIZE,nb_classes):
 
 
 def fcn_VGG16_8s_crfrnn(INPUT_SIZE,nb_classes):
-    """ Returns Keras FCN-8 + CRFRNN layer model definition.
-
-      """
+    """ Returns Keras FCN-8 + CRFRNN layer model definition. """
     fcn = fcn_8s_take2(INPUT_SIZE,nb_classes)
     saved_model_path = '/storage/gby/semseg/voc12_weights_fcn8_200ep'
     fcn.load_weights(saved_model_path)
