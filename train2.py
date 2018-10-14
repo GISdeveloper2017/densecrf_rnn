@@ -73,8 +73,11 @@ if __name__ == '__main__':
         X_train, y_train = X[0:index_train], Y[0:index_train]
         X_test, y_test = X[index_train:-1], Y[index_train:-1]
 
-    print(X_train.shape, y_train.shape)
-    print(X_test.shape, y_test.shape)
+    X_train, y_train = X_train[0:1], y_train[0:1]
+    X_test, y_test = X_test[0:1], y_test[0:1]
+    print("train shape ", X_train.shape, y_train.shape)
+    print("test shape ", X_test.shape, y_test.shape)
+
 
     # Constructing model:
     #model = fcn_8s_Sadeep(nb_classes)
@@ -84,7 +87,7 @@ if __name__ == '__main__':
     #saved_model_path = '/storage/gby/semseg/streets_weights_fcn8s_Sadeep_500ep' #'crfrnn_keras_model.h5'
     #saved_model_path = '/storage/gby/semseg/voc12_weights'
     #saved_model_path = 'crfrnn_keras_model.h5'
-    #saved_model_path = './checkpoint/streets/weights.01-0.00'
+    #saved_model_path = './checkpoint/streets/weights.01-6.08'
     #model.load_weights(saved_model_path)
 
     model.summary()
@@ -108,17 +111,17 @@ if __name__ == '__main__':
     model.compile(loss='categorical_crossentropy', optimizer=sgd, metrics=['accuracy'])
 
     # for crfrnn:
-    checkpointer = ModelCheckpoint(filepath='./checkpoint/streets/' + 'weights.{epoch:02d}-{val_loss:.2f}', verbose=1, save_best_only=False, save_weights_only=True, period=1)
-    #hist1 = model.fit(X_train, y_train,
-    #                  validation_data=(X_test, y_test),
-    #                  batch_size=1, epochs=100, verbose=2, callbacks=[checkpointer])
+    checkpointer = ModelCheckpoint(filepath='./checkpoint/streets/' + 'starting_1_weights.{epoch:02d}-{val_loss:.2f}', verbose=1, save_best_only=False, save_weights_only=True, period=1)
+    hist1 = model.fit(X_train, y_train,
+                      validation_data=(X_test, y_test),
+                      batch_size=1, epochs=100, verbose=2, callbacks=[checkpointer])
 
     # Add debugging tools
     #hooks = [tf_debug.LocalCLIDebugHook()]
 
     #Test model on random input
-    x = np.zeros(dtype="float32", shape=(1,500,500,3))
-    output = model.predict([x], batch_size=1, verbose=0, steps=None)
+    #x = np.ones(dtype="float32", shape=(1,500,500,3))
+    #output = model.predict([x], batch_size=1, verbose=0, steps=None)
     
     # save model:
     model.save_weights(RES_DIR + 'streets_weights')
