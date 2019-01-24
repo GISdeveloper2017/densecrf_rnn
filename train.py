@@ -100,12 +100,23 @@ if __name__ == '__main__':
     # dataaug_args.v_flip = args.v_flip
     # dataaug_args.brightness = args.brightness
     # dataaug_args.rotation = args.rotation
-
-    ds = load_dataset(args.dataset, INPUT_SIZE, args) #dataaug_args)
+    batch_size = args.batchsize
+    ds = load_dataset(args.dataset, INPUT_SIZE, args, batch_size) #dataaug_args)
+    
     print(ds.X_train.shape, ds.y_train.shape)
     print(ds.X_test.shape, ds.y_test.shape)
+
+    # Pad training/val sets to get number divisible by batch_size
+    (train_quotient, train_remainder) = divmod(ds.X_train.shape[0], batch_size)
+    for i in range(batch_size-train_remainder):
+        ds.X_train = np.concatenate((ds.X_train, [ds.X_train[-1]]), axis=0)
+        ds.y_train = np.concatenate((ds.y_train, [ds.y_train[-1]]), axis=0)
+    (test_quotient, test_remainder) = divmod(ds.X_test.shape[0], batch_size)
+    for i in range(batch_size-test_remainder):
+        ds.X_test = np.concatenate((ds.X_test, [ds.X_test[-1]]), axis=0)
+        ds.y_test = np.concatenate((ds.y_test, [ds.y_test[-1]]), axis=0)
+    #print(ds.X_train[-1])
     nb_classes = ds.nb_classes
-    batch_size = args.batchsize
 
     # Calculate batch sizes as an array
     batch_sizes_train, batch_sizes_val, batch_sizes_total = [], [], []
@@ -178,7 +189,7 @@ if __name__ == '__main__':
     #pdb.set_trace()
     if model.crf_flag: # True:#
         model.compile(loss=weighted_loss(nb_classes, coefficients),
-                      optimizer=Adam(lr=0.001, beta_1=0.9, beta_2=0.999, epsilon=1e-08, decay=0.001),
+                      optimizer=Adam(lr=0.032, beta_1=0.9, beta_2=0.999, epsilon=1e-08, decay=0.001),
                       metrics=['accuracy'])
     else:
         print("using categorical crossentropy")

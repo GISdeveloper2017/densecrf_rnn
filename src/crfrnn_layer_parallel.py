@@ -111,8 +111,9 @@ class CrfRnnLayer(Layer):
         #j = 0
         #for elt in ones:
         #for j in range(self.batch_size):
-        j = tf.constant(0, dtype=tf.int32)
         #condition = lambda j: tf.less(j, num_imgs)
+        '''
+        j = tf.constant(0, dtype=tf.int32)
         
         def condition(index):
             return tf.less(index, tf.shape(inputs[0])[0])
@@ -123,8 +124,12 @@ class CrfRnnLayer(Layer):
             return index+1
         
         res1 = tf.while_loop(condition, small_body, [j])
+        '''
         #j+=1
-        print("past while loop")
+        #print("past while loop")
+        for j in range(self.batch_size):
+            unary_list.append(tf.transpose(inputs[0][j,:,:,:], perm=(2,0,1)))
+            rgb_list.append(tf.transpose(inputs[1][j,:,:,:], perm=(2,0,1)))
         unaries_tensor = tf.stack(unary_list)
         rgb_tensor = tf.stack(rgb_list)
 
@@ -132,9 +137,10 @@ class CrfRnnLayer(Layer):
         #j = 0
         #for j in range(self.batch_size):
         #for elt in ones:
-        j = tf.constant(0, dtype=tf.int32)
+        #j = tf.constant(0, dtype=tf.int32)
         #condition = lambda j: tf.less(j, num_imgs)
-        def large_body(index):
+        #def large_body(index):
+        for j in range(self.batch_size):
             #unaries = tf.transpose(inputs[0][j, :, :, :], perm=(2, 0, 1)) # the fcn_scores
             unaries = unaries_tensor[j]
             #rgb = tf.transpose(inputs[1][j, :, :, :], perm=(2, 0, 1)) # the raw rgb
@@ -180,11 +186,11 @@ class CrfRnnLayer(Layer):
                 pairwise = tf.reshape(pairwise, (c, h, w))
                 q_values = unaries - pairwise
             q_values_list.append(q_values)
-            return index+1
+            #return index+1
         
-        res2 = tf.while_loop(condition, large_body, [j])
+        #res2 = tf.while_loop(condition, large_body, [j])
         l = tf.stack(q_values_list)
-        return tf.transpose(tf.reshape(l, (tf.shape(inputs[0])[0], self.num_classes, self.image_dims[0], self.image_dims[1])), perm=(0, 2, 3, 1))
+        return tf.transpose(tf.reshape(l, (self.batch_size, self.num_classes, self.image_dims[0], self.image_dims[1])), perm=(0, 2, 3, 1))
 
     def compute_output_shape(self, input_shape):
         return input_shape

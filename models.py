@@ -558,7 +558,7 @@ def fcn_RESNET50_8s(INPUT_SIZE,nb_classes):
     return model
 
 
-def fcn_RESNET50_8s_crfrnn(INPUT_SIZE,nb_classes,num_crf_iterations,finetune_path):
+def fcn_RESNET50_8s_crfrnn(INPUT_SIZE,nb_classes,num_crf_iterations,finetune_path, batch_size, batch_sizes_train, batch_sizes_val, batch_sizes_total):
     """ Returns Keras FCN-8 + CRFRNNlayer, based on ResNet50 model definition.
 
     """
@@ -579,6 +579,10 @@ def fcn_RESNET50_8s_crfrnn(INPUT_SIZE,nb_classes,num_crf_iterations,finetune_pat
                                 theta_alpha=160.,
                                 theta_beta=90.,
                                 theta_gamma=3.,
+                                batch_size = batch_size,
+                                batch_sizes_train = batch_sizes_train,
+                                batch_sizes_val = batch_sizes_val,
+                                batch_sizes_total = batch_sizes_total,
                                 num_iterations=num_crf_iterations,  # 10 for test, 5 for train
                                 name='crfrnn')([fcn_score, inputs])
 
@@ -850,7 +854,7 @@ def load_model_gby(model_name, INPUT_SIZE, nb_classes, num_crf_iterations, finet
         model.sp_flag = False
 
     elif model_name == 'fcn_RESNET50_8s_crfrnn':
-        model = fcn_RESNET50_8s_crfrnn(INPUT_SIZE, nb_classes, num_crf_iterations, finetune_path)
+        model = fcn_RESNET50_8s_crfrnn(INPUT_SIZE, nb_classes, num_crf_iterations, finetune_path, batch_size, batch_sizes_train, batch_sizes_val, batch_sizes_total)
         model.crf_flag = True
         model.sp_flag = False
 
