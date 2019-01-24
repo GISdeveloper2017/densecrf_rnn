@@ -7,9 +7,9 @@ MIT License
 #from keras.optimizers import SGD
 #from keras import backend as K
 import pdb
-from models import load_model_gby
-from datasets import load_dataset
-from utils import IoU_ver2,give_color_to_seg_img,visualize_conv_filters,compute_median_frequency_reweighting,load_segmentations
+from models_gby_new import load_model_gby
+from datasets_gby_new import load_dataset
+from utils_gby_new import IoU_ver2,give_color_to_seg_img,visualize_conv_filters,compute_median_frequency_reweighting,load_segmentations
 from src.weighted_categorical_crossentropy import weighted_loss
 
 ## Import usual libraries
@@ -28,8 +28,10 @@ import ntpath
 import pickle
 import cv2
 from keras.callbacks import ModelCheckpoint
+from tensorflow.python import debug as tf_debug
 
-RES_DIR = "/storage/cfmata/deeplab/crf_rnn/crfasrnn_keras/results/pascal_voc12/"
+#RES_DIR = "/storage/cfmata/deeplab/crf_rnn/crfasrnn_keras/results/pascal_voc12/"
+RES_DIR = "/storage/cfmata/deeplab/crf_rnn/crfasrnn_keras/results/horse_coarse/"
 
 def argument_parser():
     parser = argparse.ArgumentParser(description='Process arguments')
@@ -74,6 +76,11 @@ if __name__ == '__main__':
     config = tf.ConfigProto()
     config.gpu_options.per_process_gpu_memory_fraction = 0.70 # default: "0.95"
     config.gpu_options.visible_device_list = args.gpu # default: "2"
+    ''' TF Debugger option
+    sess = tf.Session(config=config)
+    sess = tf_debug.LocalCLIDebugWrapperSession(sess)
+    set_session(sess)
+    '''
     set_session(tf.Session(config=config))
 
     print("python {}".format(sys.version))
@@ -97,18 +104,35 @@ if __name__ == '__main__':
     print(ds.X_train.shape, ds.y_train.shape)
     print(ds.X_test.shape, ds.y_test.shape)
     nb_classes = ds.nb_classes
+    batch_size = args.batchsize
 
-    # pdb.set_trace()
-    # with tf.device('/cpu:0'):
-    #     input_image, output_image = data_augmentation(input_image, output_image)
+    # Calculate batch sizes as an array
+    batch_sizes_train, batch_sizes_val, batch_sizes_total = [], [], []
+    (train_quotient, train_remainder) = divmod(ds.X_train.shape[0], batch_size)
+    (test_quotient, test_remainder) = divmod(ds.X_test.shape[0], batch_size)
+    for i in range(train_quotient):
+        batch_sizes_train.append(batch_size)
+        batch_sizes_total.append(batch_size)
+    if train_remainder != 0:
+        batch_sizes_train.append(train_remainder)
+        batch_sizes_total.append(train_remainder)
+    for i in range(test_quotient):
+        batch_sizes_val.append(batch_size)
+        batch_sizes_total.append(batch_size)
+    if test_remainder != 0:
+        batch_sizes_val.append(test_remainder)
+        batch_sizes_total.append(test_remainder)
+
+    print("batch sizes train ", batch_sizes_train)
+    print("batch sizes val ", batch_sizes_val)
+    print("batch sizes total ", batch_sizes_total)
     # ===============
     # LOAD model:
     # ===============
 
     # for training:
     num_crf_iterations = 5
-
-    model = load_model_gby(args.model, INPUT_SIZE, nb_classes, num_crf_iterations, args.finetune_path)
+    model = load_model_gby(args.model, INPUT_SIZE, nb_classes, num_crf_iterations, args.finetune_path, batch_size, batch_sizes_train, batch_sizes_val, batch_sizes_total)
 
     # if resuming training:
     if (args.weights is not None) and (os.path.exists(args.weights)):
@@ -142,7 +166,6 @@ if __name__ == '__main__':
     #model.compile(loss="categorical_crossentropy", optimizer='Adadelta', metrics=['accuracy'])
 
     num_epochs = args.epochs
-    batch_size = args.batchsize
     verbose_mode = args.verbosemode
     #   coefficients = ds.weighted_loss_coefficients
     # for weighted_loss_coefficients
@@ -158,7 +181,7 @@ if __name__ == '__main__':
                       metrics=['accuracy'])
     else:
         print("using categorical crossentropy")
-        model.compile(loss='categorical_crossentropy',
+        model.compile(loss='categorial_crossentropy', # weighted_loss(nb_classes, coefficients), # 'categorial_crossentropy',
                       optimizer='sgd',
                       metrics=['accuracy'])
                       #callbacks=['csv_logger'])
@@ -169,7 +192,8 @@ if __name__ == '__main__':
     if args.h_flip | args.v_flip | (not args.brightness==None) | (not   args.rotation==None):
         data_augmentation_flag = True  # False #
 
-    checkpoint = ModelCheckpoint(RES_DIR+"voc2012_sadeep_start0.{epoch:02d}-{val_loss:.2f}", save_weights_only=True,verbose=1, period=500)
+    #checkpoint = ModelCheckpoint(RES_DIR+"voc2012_sadeep_crf.{epoch:02d}-{val_loss:.2f}", save_weights_only=True,verbose=1, period=1)
+    checkpoint = ModelCheckpoint(RES_DIR+"horsecoarse_checkpt_crfrnn_start30.{epoch:02d}-{val_loss:.2f}", save_weights_only=True,verbose=1, period=1)
     cb_list = [checkpoint]
     
     if not data_augmentation_flag:
@@ -215,7 +239,7 @@ if __name__ == '__main__':
         print(y_testi.shape, y_predi.shape)
         IoU_ver2(y_testi, y_predi)
         # pdb.set_trace()
-
+    '''
     # Visualize conv filters:
     # -------------------------------------
     layer_name = 'score_pool7c_upsample_32' # 'crfrnn' 'score2'
@@ -269,7 +293,7 @@ if __name__ == '__main__':
                 ax.set_title("true class")
 
         plt.savefig('examples_%s.png' % ntpath.basename(save_by_name))
-
+    '''
 
 # usage:
 # >>python train2.py ./list/train2s.txt ./list/val2s.txt /storage/gby/datasets/pascal_voc12/images_orig/ /storage/gby/datasets/pascal_voc12/labels_orig/

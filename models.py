@@ -5,7 +5,7 @@ from keras.layers.normalization import BatchNormalization
 from keras.initializers import Constant
 from keras.applications.vgg16 import VGG16
 from keras.applications.resnet50 import ResNet50
-from utils import bilinear_upsample_weights
+from utils_gby_new import bilinear_upsample_weights
 import sys
 sys.path.insert(1, './src')
 from crfrnn_layer import CrfRnnLayer #, CrfRnnLayerSPIOAT
@@ -195,13 +195,13 @@ def fcn_VGG16_8s(INPUT_SIZE,nb_classes):    # previous name: fcn8s_take2
     return model
 
 
-def fcn_VGG16_8s_crfrnn(INPUT_SIZE,nb_classes,num_crf_iterations):
+def fcn_VGG16_8s_crfrnn(INPUT_SIZE,nb_classes,num_crf_iterations, batch_size):
     """ Returns Keras FCN-8 + CRFRNN layer model definition.
 
-      """
+    """
     fcn = fcn_VGG16_8s(INPUT_SIZE,nb_classes)
-    saved_model_path = '/storage/gby/semseg/streets_weights_vgg16fcn8s_5000ep'
-    #fcn.load_weights(saved_model_path)
+    saved_model_path = '/storage/cfmata/deeplab/crf_rnn/crfasrnn_keras/results/results/pascal_voc12/voc2012_sadeep_start0.80-1.18'
+    fcn.load_weights(saved_model_path)
 
     inputs = fcn.layers[0].output
     # Add plenty of zero padding
@@ -219,6 +219,7 @@ def fcn_VGG16_8s_crfrnn(INPUT_SIZE,nb_classes,num_crf_iterations):
                              theta_beta=90.,   #3.
                              theta_gamma=3.,
                              num_iterations=num_crf_iterations, # 10 in test time, 5 in train time
+                             batch_size = batch_size,
                              name='crfrnn')([fcn_score, inputs])
 
     model = Model(inputs=inputs, output=crfrnn_output, name='fcn_VGG16_8s_crfrnn')
@@ -314,14 +315,16 @@ def fcn_8s_Sadeep(nb_classes):
     return model
 
 
-def fcn_8s_Sadeep_crfrnn(nb_classes,num_crf_iterations):
+def fcn_8s_Sadeep_crfrnn(nb_classes,num_crf_iterations, batch_size, batch_sizes_train, batch_sizes_val, batch_sizes_total):
     """ Returns Keras FCN-8 + CRFRNN layer model definition.
 
       """
     INPUT_SIZE = 500
 
     fcn = fcn_8s_Sadeep(nb_classes)
-    saved_model_path = '/storage/gby/semseg/streets_weights_fcn8s_Sadeep_500ep'
+    #saved_model_path = '/storage/gby/semseg/streets_weights_fcn8s_Sadeep_500ep'
+    #saved_model_path = '/storage/cfmata/deeplab/crf_rnn/crfasrnn_keras/results/pascal_voc12/voc2012_sadeep_start0.80-1.18'
+    saved_model_path = '/storage/cfmata/deeplab/crf_rnn/crfasrnn_keras/results/horse_coarse/horsecoarse_checkpt.30-0.57'
     fcn.load_weights(saved_model_path)
 
     inputs = fcn.layers[0].output
@@ -336,12 +339,16 @@ def fcn_8s_Sadeep_crfrnn(nb_classes,num_crf_iterations):
     # Adding the crfrnn layer:
     height, weight = INPUT_SIZE, INPUT_SIZE
     crfrnn_output = CrfRnnLayer(image_dims=(height, weight),
-                             num_classes=nb_classes,
-                             theta_alpha=160.,
-                             theta_beta=90.,  #3.
-                             theta_gamma=3.,
-                             num_iterations=num_crf_iterations, # 10 in test time, 5 in train time
-                             name='crfrnn')([fcn_score, inputs])
+                                num_classes=nb_classes,
+                                theta_alpha=160.,
+                                theta_beta=90.,  #3.
+                                theta_gamma=3.,
+                                batch_size = batch_size,
+                                batch_sizes_train = batch_sizes_train,
+                                batch_sizes_val = batch_sizes_val,
+                                batch_sizes_total = batch_sizes_total,
+                                num_iterations=num_crf_iterations, # 10 in test time, 5 in train time
+                                name='crfrnn')([fcn_score, inputs])
 
     # crfrnn_output = CrfRnnLayerSP(image_dims=(height, weight),
     #                      num_classes=nb_classes,
@@ -792,13 +799,18 @@ def fcn_RESNET50_8s_crfrnnSPIOAT(INPUT_SIZE,nb_classes,num_crf_iterations,finetu
 
 
 
-def load_model_gby(model_name, INPUT_SIZE, nb_classes, num_crf_iterations, finetune_path):
+def load_model_gby(model_name, INPUT_SIZE, nb_classes, num_crf_iterations, finetune_path, batch_size, batch_sizes_train, batch_sizes_val, batch_sizes_total):
 
     print('loading network type: %s..'% model_name)
 
     if model_name == 'fcn_8s_Sadeep':
         model = fcn_8s_Sadeep(nb_classes)
         model.crf_flag = False
+        model.sp_flag = False
+
+    elif model_name == 'fcn_8s_Sadeep_crfrnn':
+        model = fcn_8s_Sadeep_crfrnn(nb_classes, num_crf_iterations, batch_size, batch_sizes_train, batch_sizes_val, batch_sizes_total)
+        model.crf_flag = True
         model.sp_flag = False
 
     elif model_name == 'fcn_VGG16_32s':
