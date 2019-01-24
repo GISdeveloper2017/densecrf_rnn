@@ -76,6 +76,7 @@ if __name__ == '__main__':
     config = tf.ConfigProto()
     config.gpu_options.per_process_gpu_memory_fraction = 0.70 # default: "0.95"
     config.gpu_options.visible_device_list = args.gpu # default: "2"
+    config.graph_options.optimizer_options.global_jit_level = tf.OptimizerOptions.OFF
     ''' TF Debugger option
     sess = tf.Session(config=config)
     sess = tf_debug.LocalCLIDebugWrapperSession(sess)
@@ -199,6 +200,7 @@ if __name__ == '__main__':
     if not data_augmentation_flag:
         # option 1:
         print("NOT using data augmentation..")
+        
         hist1 = model.fit(ds.X_train, ds.y_train,
                           validation_data=(ds.X_test, ds.y_test),
                           batch_size=batch_size, epochs=num_epochs, verbose=verbose_mode,#)

@@ -55,7 +55,7 @@ class CrfRnnLayer(Layer):
         self.batch_sizes_train = batch_sizes_train
         self.batch_sizes_val = batch_sizes_val
         self.total_batches = batch_sizes_total
-        #self.state = 2
+        #self.state = 0
         
         self.num_iterations = num_iterations
         self.spatial_ker_weights = None
@@ -82,39 +82,59 @@ class CrfRnnLayer(Layer):
                                                     initializer=_potts_model_initializer,
                                                     trainable=True)
 
+        '''
         self.state = self.add_weight(name = 'batch',
                                      shape=(1),
                                      initializer=_batch_init,
                                      trainable=False)
-
+        '''
         super(CrfRnnLayer, self).build(input_shape)
 
     def call(self, inputs):
         # python lists for variables
         unary_list, rgb_list, q_values_list, = [], [], []
-        
-        num_imgs = inputs[0].get_shape().as_list()[0] # gets number of images in current batch
-        ones = tf.ones([num_imgs])
-        
-        current = self.total_batches[self.state]
-        self.state = self.state + 1
 
+        #if inputs[0].get_shape().as_list()[0] == None:
+        #    num_imgs = 1
+        #else:
+        #    num_imgs = inputs[0].get_shape().as_list()[0] # gets number of images in current batch
+        #num_imgs = tf.placeholder(tf.int32, shape=(1))
+        #ones = tf.ones([num_imgs])
+        
+        #current = self.total_batches[0]
+        #self.state = self.state + 1
+        #state = self.state # for printing
+        
         #for i in range(1):
             #current = tf.Print(current, [current], message = "current ")
-            #state = tf.Print(state, [state], message = "state ")
+            #print_state = tf.Print(self.state, [self.state], message = "state ")
         #j = 0
-        for elt in ones:
+        #for elt in ones:
+        #for j in range(self.batch_size):
+        j = tf.constant(0, dtype=tf.int32)
+        #condition = lambda j: tf.less(j, num_imgs)
+        
+        def condition(index):
+            return tf.less(index, tf.shape(inputs[0])[0])
+        
+        def small_body(index):
             unary_list.append(tf.transpose(inputs[0][j,:,:,:], perm=(2,0,1)))
             rgb_list.append(tf.transpose(inputs[1][j,:,:,:], perm=(2,0,1)))
-            #j+=1
-            
+            return index+1
+        
+        res1 = tf.while_loop(condition, small_body, [j])
+        #j+=1
+        print("past while loop")
         unaries_tensor = tf.stack(unary_list)
         rgb_tensor = tf.stack(rgb_list)
 
         #tf.while_loop(condition,body,[i])
-        j = 0
-        for elt in ones:
-        #for j in range(current):
+        #j = 0
+        #for j in range(self.batch_size):
+        #for elt in ones:
+        j = tf.constant(0, dtype=tf.int32)
+        #condition = lambda j: tf.less(j, num_imgs)
+        def large_body(index):
             #unaries = tf.transpose(inputs[0][j, :, :, :], perm=(2, 0, 1)) # the fcn_scores
             unaries = unaries_tensor[j]
             #rgb = tf.transpose(inputs[1][j, :, :, :], perm=(2, 0, 1)) # the raw rgb
@@ -159,11 +179,12 @@ class CrfRnnLayer(Layer):
                 # Adding unary potentials
                 pairwise = tf.reshape(pairwise, (c, h, w))
                 q_values = unaries - pairwise
-            j+=1
             q_values_list.append(q_values)
-            
+            return index+1
+        
+        res2 = tf.while_loop(condition, large_body, [j])
         l = tf.stack(q_values_list)
-        return tf.transpose(tf.reshape(l, (current, c, h, w)), perm=(0, 2, 3, 1))
+        return tf.transpose(tf.reshape(l, (tf.shape(inputs[0])[0], self.num_classes, self.image_dims[0], self.image_dims[1])), perm=(0, 2, 3, 1))
 
     def compute_output_shape(self, input_shape):
         return input_shape
