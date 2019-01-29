@@ -65,15 +65,15 @@ def _compute_superpixel_update(q_values,superpixel_low_weights,superpixel_high_w
     extended_sp_map = tf.stack([sp_map] * c)
 
     # initialize to zeros
-    prod_tensor = tf.zeros(shape=(c, h, w))
     
-    products_list = [0]*5
+    print("len sp_indices ", len(sp_indices))
+    products_list = []
     # (Previously) iterate over all superpixels, now sample the center of the image
     #for sp_indx in sp_indices:
-    #'''
+    '''
     for i in range(5):
         products_list[i] = iteration_body(extended_sp_map, sp_indices, i, q_values, c, h, w)
-        '''
+        
         sp_indx = sp_indices[i]
         #print(sp_indx)
         # This will put True where where sp index is sp_indx, False otherwise:
@@ -97,9 +97,27 @@ def _compute_superpixel_update(q_values,superpixel_low_weights,superpixel_high_w
         #prod_tensor += C
         '''
 
-    #cond = lambda i: tf.less(i, 5)
-    #res = tf.while_loop()
-    prod_tensor = tf.add_n(products_list)
+    def while_body(index, prod_tensor):
+        sp_indx = tf.to_float(index)
+        cond_sp_indx = tf.equal(extended_sp_map, sp_indx)
+        q_val_for_sp = tf.multiply(tf.to_float(cond_sp_indx), q_values)
+        B = tf.reduce_logsumexp(q_val_for_sp, [1,2])
+        C1 = tf.stack([B]*(h*w))
+        C2 = tf.reshape(tf.transpose(C1), (c,h,w))
+        C3 = tf.to_float(tf.multiply(tf.to_float(cond_sp_indx), C2))
+        #products_list.append(C3)
+        prod_tensor += C3
+        return index+1, prod_tensor
+
+    i = 0
+    prod_tensor = tf.zeros(shape=(c, h, w))
+    cond = lambda i, prod_tensor: tf.less(i, len(sp_indices))
+    time1 = time.time()
+    res = tf.while_loop(cond, while_body, [i, prod_tensor], parallel_iterations=len(sp_indices), back_prop=False)
+    time2 = time.time()
+    print("time ",time2-time1)
+    #prod_tensor = products_list[0]
+    #prod_tensor = tf.add_n(products_list)
 
     # and now the update rule for superpixel
     # the actual product: we need to divide it by the current q_vals
@@ -591,8 +609,8 @@ class CrfRnnLayerSP(Layer):
         q_values = unaries
 
         num_of_sp_samples = 5
-        sp_indices = [random.sample(range(200, 400), num_of_sp_samples) for i in range(self.num_iterations)]
-        #sp_indices = [range(200,400) for i in range(self.num_iterations)]
+        #sp_indices = [random.sample(range(200, 400), num_of_sp_samples) for i in range(self.num_iterations)]
+        sp_indices = [range(200,400) for i in range(self.num_iterations)]
         t2 = time.time()
         for i in range(self.num_iterations):
             softmax_out = tf.nn.softmax(q_values, 0)
