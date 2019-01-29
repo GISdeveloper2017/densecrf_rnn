@@ -46,24 +46,39 @@ def _sp_low_weight_initializer(shape):
 def _low_weight_initializer(shape):
     return np.ones(shape=shape, dtype=np.float32)
 
+def iteration_body(extended_sp_map, sp_indices, i, q_values, c, h, w):
+    sp_indx = sp_indices[i]
+    cond_sp_indx = tf.equal(extended_sp_map, sp_indx)
+    q_val_for_sp = tf.multiply(tf.to_float(cond_sp_indx), q_values)
+    B = tf.reduce_logsumexp(q_val_for_sp, [1,2])
+    C1 = tf.stack([B]*(h*w))
+    C2 = tf.reshape(tf.transpose(C1), (c,h,w))
+    C3 = tf.multiply(tf.to_float(cond_sp_indx), C2)
+    return C3
+
 def _compute_superpixel_update(q_values,superpixel_low_weights,superpixel_high_weights,superpixel_cliques, sp_indices, c, h, w ):
     # compute superpixel tensor:
     # ---------------------------
-    # sp_map = segs[0][0,:,:]
     sp_map = superpixel_cliques
 
-    # replicate the sp_map m times and have the shape of [rows,cols,m), where m in the number of labels
+    # replicate the sp_map m times and have the shape of [rows,cols,m], where m is the number of labels
     extended_sp_map = tf.stack([sp_map] * c)
 
-    # initiate to zeros
+    # initialize to zeros
     prod_tensor = tf.zeros(shape=(c, h, w))
-
-    # iterate over all superpixels, # Sample the center of the image
-    for sp_indx in sp_indices:#random.sample(range(200, 400), 5):  # sampling superpixels, otherwise memory is overloaded
-        print(sp_indx)
+    
+    products_list = [0]*5
+    # (Previously) iterate over all superpixels, now sample the center of the image
+    #for sp_indx in sp_indices:
+    #'''
+    for i in range(5):
+        products_list[i] = iteration_body(extended_sp_map, sp_indices, i, q_values, c, h, w)
+        '''
+        sp_indx = sp_indices[i]
+        #print(sp_indx)
         # This will put True where where sp index is sp_indx, False otherwise:
         cond_sp_indx = tf.equal(extended_sp_map, sp_indx)
-
+        
         # put 1 in q_vqls if not belongs to sp_indx:  ## (using tf.tensordot rather than tf.multiply)
         #q_val_for_sp_padded = tf.multiply(tf.to_float(cond_sp_indx), q_values) + tf.to_float(tf.logical_not(cond_sp_indx))
         q_val_for_sp = tf.multiply(tf.to_float(cond_sp_indx), q_values)
@@ -71,14 +86,20 @@ def _compute_superpixel_update(q_values,superpixel_low_weights,superpixel_high_w
         # compute the product for each label:
         #B = tf.reduce_prod(q_val_for_sp_padded, [1, 2])
         B = tf.reduce_logsumexp(q_val_for_sp, [1, 2])
-
+        
         # Create a tensor where each cell contains the product for its superpiel sp_indx and its label l:
-        C = tf.stack([B] * (h * w))
-        C = tf.reshape(tf.transpose(C), (c, h, w))
-        C = tf.multiply(tf.to_float(cond_sp_indx), C)  ## (using tf.tensordot rather than tf.multiply
+        C1 = tf.stack([B] * (h * w))
+        C2 = tf.reshape(tf.transpose(C1), (c, h, w))
+        C3 = tf.multiply(tf.to_float(cond_sp_indx), C2)  ## (using tf.tensordot rather than tf.multiply
+        products_list.append(C3)
 
         # add this to the overall product tensor; each cell contains the 'product' for its update rule:
-        prod_tensor += C
+        #prod_tensor += C
+        '''
+
+    #cond = lambda i: tf.less(i, 5)
+    #res = tf.while_loop()
+    prod_tensor = tf.add_n(products_list)
 
     # and now the update rule for superpixel
     # the actual product: we need to divide it by the current q_vals
@@ -505,13 +526,14 @@ class CrfRnnLayerSP(Layer):
     """
 
     def __init__(self, image_dims, num_classes,
-                 theta_alpha, theta_beta, theta_gamma,
+                 theta_alpha, theta_beta, theta_gamma, batch_size,
                  num_iterations, **kwargs):
         self.image_dims = image_dims
         self.num_classes = num_classes
         self.theta_alpha = theta_alpha
         self.theta_beta = theta_beta
         self.theta_gamma = theta_gamma
+        self.batch_size = batch_size
         self.num_iterations = num_iterations
         self.spatial_ker_weights = None
         self.bilateral_ker_weights = None
@@ -568,8 +590,10 @@ class CrfRnnLayerSP(Layer):
                                                             theta_beta=self.theta_beta)
         q_values = unaries
 
-        num_of_sp_samples = 1
+        num_of_sp_samples = 5
         sp_indices = [random.sample(range(200, 400), num_of_sp_samples) for i in range(self.num_iterations)]
+        #sp_indices = [range(200,400) for i in range(self.num_iterations)]
+        t2 = time.time()
         for i in range(self.num_iterations):
             softmax_out = tf.nn.softmax(q_values, 0)
 
@@ -585,8 +609,11 @@ class CrfRnnLayerSP(Layer):
             bilateral_out = bilateral_out / bilateral_norm_vals
 
             # compute superpixel potential update:
+            t0 = time.time()
             superpixel_update = _compute_superpixel_update(softmax_out, self.superpixel_low_weights, self.superpixel_high_weight, superpixel_cliques, sp_indices[i], c, h, w)
 
+            t1 = time.time()
+            print("time for sp update ", t1-t0)
             # Weighting filter outputs
             message_passing = (tf.matmul(self.spatial_ker_weights,
                                          tf.reshape(spatial_out, (c, -1))) +
@@ -602,6 +629,8 @@ class CrfRnnLayerSP(Layer):
 
             q_values = unaries - pairwise - superpixel_update
 
+        t3 = time.time()
+        print("time for entire update ", t3-t2)
         return tf.transpose(tf.reshape(q_values, (1, c, h, w)), perm=(0, 2, 3, 1))
 
     def compute_output_shape(self, input_shape):
@@ -617,13 +646,14 @@ class CrfRnnLayerSPIO(Layer):
     """
 
     def __init__(self, image_dims, num_classes,
-                 theta_alpha, theta_beta, theta_gamma,
+                 theta_alpha, theta_beta, theta_gamma, batch_size,
                  num_iterations, **kwargs):
         self.image_dims = image_dims
         self.num_classes = num_classes
         self.theta_alpha = theta_alpha
         self.theta_beta = theta_beta
         self.theta_gamma = theta_gamma
+        self.batch_size = batch_size
         self.num_iterations = num_iterations
         self.spatial_ker_weights = None
         self.bilateral_ker_weights = None
@@ -735,13 +765,14 @@ class CrfRnnLayerSPAT(Layer):
     """
 
     def __init__(self, image_dims, num_classes,
-                 theta_alpha, theta_beta, theta_gamma,
+                 theta_alpha, theta_beta, theta_gamma, batch_size,
                  num_iterations, **kwargs):
         self.image_dims = image_dims
         self.num_classes = num_classes
         self.theta_alpha = theta_alpha
         self.theta_beta = theta_beta
         self.theta_gamma = theta_gamma
+        self.batch_size = batch_size
         self.num_iterations = num_iterations
         self.spatial_ker_weights = None
         self.bilateral_ker_weights = None
@@ -849,13 +880,14 @@ class CrfRnnLayerAll(Layer):
     """
 
     def __init__(self, image_dims, num_classes,
-                 theta_alpha, theta_beta, theta_gamma,
+                 theta_alpha, theta_beta, theta_gamma, batch_size,
                  num_iterations, **kwargs):
         self.image_dims = image_dims
         self.num_classes = num_classes
         self.theta_alpha = theta_alpha
         self.theta_beta = theta_beta
         self.theta_gamma = theta_gamma
+        self.batch_size = batch_size
         self.num_iterations = num_iterations
         self.spatial_ker_weights = None
         self.bilateral_ker_weights = None
