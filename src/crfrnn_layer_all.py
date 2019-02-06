@@ -820,28 +820,31 @@ class CrfRnnLayerSPAT(Layer):
         super(CrfRnnLayerSPAT, self).build(input_shape)
 
     def call(self, inputs):
-        unary_list, rgb_list, sp_list, q_values_list = [], [], [], []
-
+        #unary_list, rgb_list, sp_list, q_values_list = [], [], [], [] # For loop
+        unary_list, rgb_list, sp_list = [], [], [] # While loop
+        
         for j in range(self.batch_size):
             unary_list.append(tf.transpose(inputs[0][0, :, :, :], perm=(2, 0, 1)))
             rgb_list.append(tf.transpose(inputs[1][0, :, :, :], perm=(2, 0, 1)))
             sp_list.append(tf.transpose(inputs[2][0,:,:]))
-        
-        #unaries = tf.transpose(inputs[0][0, :, :, :], perm=(2, 0, 1)) # the fcn_scores
-        #rgb = tf.transpose(inputs[1][0, :, :, :], perm=(2, 0, 1)) # the raw rgb
-        #superpixel_cliques = tf.transpose(inputs[2][0,:,:])  # perm=(0,1)
 
         unaries_tensor = tf.stack(unary_list)
         rgb_tensor = tf.stack(rgb_list)
         sp_tensor = tf.stack(sp_list)
 
-        #for j in range(self.batch_size):
+        #for k in range(self.batch_size):
+        indexed_arr = np.ones(shape=(self.batch_size, self.num_classes, self.image_dims[0], self.image_dims[1]))
+        for m in range(self.batch_size):
+            indexed_arr[m] = m
+        indexed_tensor = tf.convert_to_tensor(indexed_arr, np.float32)
         k = 0
-        cond = lambda k, q_values: k < self.batch_size
-        def while_loop(index):
-            unaries = unaries_tensor[j]
-            rgb = rgb_tensor[j]
-            superpixel_cliques = sp_tensor[j]
+        cond = lambda k, q_values_tensor: tf.less(k, self.batch_size)
+        q_values_tensor = tf.zeros(shape=(self.batch_size, self.num_classes, self.image_dims[0], self.image_dims[1]))
+        def while_body(k, q_values_tensor):
+            
+            unaries = unaries_tensor[k]
+            rgb = rgb_tensor[k]
+            superpixel_cliques = sp_tensor[k]
             
             c, h, w = self.num_classes, self.image_dims[0], self.image_dims[1]
             
@@ -854,9 +857,7 @@ class CrfRnnLayerSPAT(Layer):
                                                                 theta_alpha=self.theta_alpha,
                                                                 theta_beta=self.theta_beta)
             q_values = unaries
-            
-            #num_of_sp_samples = 1
-            #sp_indices = [random.sample(range(200, 400), num_of_sp_samples) for i in range(self.num_iterations)]
+
             sp_indices = [range(500) for i in range(self.num_iterations)]
             for i in range(self.num_iterations):
                 softmax_out = tf.nn.softmax(q_values, 0)
@@ -875,9 +876,8 @@ class CrfRnnLayerSPAT(Layer):
                 # compute containment potential update:
                 t0 = time.time()
                 attachment_update = _compute_superpixel_and_attachment_update(softmax_out, self.complex_rel_low_weights, self.complex_rel_high_weights, superpixel_cliques, sp_indices[i], c, h, w)
-                #attachment_update = _compute_attachment_update(softmax_out, self.complex_rel_low_weights, self.complex_rel_high_weights, superpixel_cliques, sp_indices[i], c, h, w)
                 t1 = time.time()
-                print("time ", t1-t0)
+                #print("time ", t1-t0)
                 # Weighting filter outputs
                 message_passing = (tf.matmul(self.spatial_ker_weights,
                                              tf.reshape(spatial_out, (c, -1))) +
@@ -893,10 +893,18 @@ class CrfRnnLayerSPAT(Layer):
                 
                 q_values = unaries - pairwise - attachment_update
 
-            q_values_list.append(q_values)
+            #q_values_list.append(q_values)
+            float_index = tf.to_float(k)
+            cond_indexed = tf.equal(indexed_tensor, float_index)
+            q_vals_stacked = tf.stack([q_values] * self.batch_size)
+            q_vals_for_index = tf.multiply(tf.to_float(cond_indexed), q_vals_stacked)
+            q_values_tensor += q_vals_for_index
+            return k + 1, q_values_tensor
 
-        l = tf.stack(q_values_list)
-        return tf.transpose(tf.reshape(l, (self.batch_size, self.num_classes, self.image_dims[0], self.image_dims[1])), perm=(0,2,3,1))
+        res = tf.while_loop(cond, while_body, [k, q_values_tensor], parallel_iterations=self.batch_size, back_prop=False)
+        return tf.transpose(tf.reshape(q_values_tensor, (self.batch_size, self.num_classes, self.image_dims[0], self.image_dims[1])), perm=(0,2,3,1))
+        #l = tf.stack(q_values_list)
+        #return tf.transpose(tf.reshape(l, (self.batch_size, self.num_classes, self.image_dims[0], self.image_dims[1])), perm=(0,2,3,1))
         #return tf.transpose(tf.reshape(q_values, (1, c, h, w)), perm=(0, 2, 3, 1))
 
     def compute_output_shape(self, input_shape):
