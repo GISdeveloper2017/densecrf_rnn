@@ -31,7 +31,7 @@ from keras.callbacks import ModelCheckpoint
 from tensorflow.python import debug as tf_debug
 
 #RES_DIR = "/storage/cfmata/deeplab/crf_rnn/crfasrnn_keras/results/pascal_voc12/"
-RES_DIR = "/storage/cfmata/deeplab/crf_rnn/crfasrnn_keras/results/horse_coarse/"
+#RES_DIR = "/storage/cfmata/deeplab/crf_rnn/crfasrnn_keras/results/horse_coarse/"
 
 def argument_parser():
     parser = argparse.ArgumentParser(description='Process arguments')
@@ -88,11 +88,39 @@ if __name__ == '__main__':
     print("keras version {}".format(keras.__version__)) #; del keras
     print("tensorflow version {}".format(tf.__version__))
 
+    # Set results directory
+    if args.dataset == "horsecoarse" or args.dataset == "horsecoarse_small":
+        RES_DIR = "/storage/cfmata/deeplab/crf_rnn/crfasrnn_keras/results/horse_coarse/"
+    elif args.dataset == "voc2012":
+        RES_DIR = "/storage/cfmata/deeplab/crf_rnn/crfasrnn_keras/results/pascal_voc12/"
+    else:
+        RES_DIR = ""
+
+    # ===============
+    # LOAD model:
+    # ===============
+
+    INPUT_SIZE = args.inputsize
+    nb_classes = 6 # TODO: change this back when variable ordering fixed
+    batch_size = args.batchsize
+
+    # for training:
+    num_crf_iterations = 5
+    model = load_model_gby(args.model, INPUT_SIZE, nb_classes, num_crf_iterations, args.finetune_path, batch_size)# batch_sizes_train, batch_sizes_val, batch_sizes_total)
+
+    # if resuming training:
+    if (args.weights is not None) and (os.path.exists(args.weights)):
+        print("loading weights %s.."% args.weights)
+        model.load_weights(args.weights)
+
+    model.summary()
+    print('trining model %s..'% model.name)
+    
     # ===============
     # LOAD train data:
     # ===============
 
-    INPUT_SIZE = args.inputsize  #500 #224 #512
+    #INPUT_SIZE = args.inputsize  #500 #224 #512
 
     # parameters for data sugmentation:
     # dataaug_args = {}
@@ -100,25 +128,61 @@ if __name__ == '__main__':
     # dataaug_args.v_flip = args.v_flip
     # dataaug_args.brightness = args.brightness
     # dataaug_args.rotation = args.rotation
-    batch_size = args.batchsize
+    #batch_size = args.batchsize
     ds = load_dataset(args.dataset, INPUT_SIZE, args, batch_size) #dataaug_args)
     
     print(ds.X_train.shape, ds.y_train.shape)
     print(ds.X_test.shape, ds.y_test.shape)
 
-    # Pad training/val sets to get number divisible by batch_size
-    (train_quotient, train_remainder) = divmod(ds.X_train.shape[0], batch_size)
-    for i in range(batch_size-train_remainder):
-        ds.X_train = np.concatenate((ds.X_train, [ds.X_train[-1]]), axis=0)
-        ds.y_train = np.concatenate((ds.y_train, [ds.y_train[-1]]), axis=0)
-    (test_quotient, test_remainder) = divmod(ds.X_test.shape[0], batch_size)
-    for i in range(batch_size-test_remainder):
-        ds.X_test = np.concatenate((ds.X_test, [ds.X_test[-1]]), axis=0)
-        ds.y_test = np.concatenate((ds.y_test, [ds.y_test[-1]]), axis=0)
-    #print(ds.X_train[-1])
-    nb_classes = ds.nb_classes
+    # ===============
+    # LOAD sp segment:
+    # ===============
+    if model.sp_flag:
+        segments_train = load_segmentations(ds.segments_dir, ds.train_list, INPUT_SIZE)
+        segments_test = load_segmentations(ds.segments_dir, ds.test_list, INPUT_SIZE)
+        print("Loading superpixels segmentations:")
+        print(segments_train.shape, segments_test.shape)
+    else:
+        segments_train = np.array([])
+        segments_test = np.array([])
 
+    # Pad training/val sets with random imgs to get number divisible by batch_size; can change to using images from next epoch
+    #(train_quotient, train_remainder) = divmod(ds.X_train.shape[0], batch_size)
+    train_remainder = ds.X_train.shape[0] % batch_size
+    print("train remainder ", train_remainder)
+    if train_remainder != 0:
+        # Choose random indices for extra imgs
+        print("train high bound ", ds.X_train.shape[0])
+        indices_train = np.random.randint(0,high=ds.X_train.shape[0], size=batch_size-train_remainder)
+        print("len extra train ", len(indices_train))
+        for i in indices_train:
+            ds.X_train = np.concatenate((ds.X_train, [ds.X_train[i]]), axis=0)
+            ds.y_train = np.concatenate((ds.y_train, [ds.y_train[i]]), axis=0)
+            if model.sp_flag:
+                segments_train = np.concatenate((segments_train, [segments_train[i]]), axis=0)
+                
+    print("new len ", len(ds.X_train), len(segments_train))
+    
+    #(test_quotient, test_remainder) = divmod(ds.X_test.shape[0], batch_size)
+    test_remainder = ds.X_test.shape[0] % batch_size
+    if test_remainder != 0:
+        indices_test = np.random.randint(0,high=ds.X_test.shape[0], size=batch_size-test_remainder)
+        #print("len extra test ", len(indices_test))
+        for i in indices_test:
+            ds.X_test = np.concatenate((ds.X_test, [ds.X_test[i]]), axis=0)
+            ds.y_test = np.concatenate((ds.y_test, [ds.y_test[i]]), axis=0)
+            if model.sp_flag:
+                segments_test = np.concatenate((segments_test, [segments_test[i]]), axis=0)
+
+
+    if model.sp_flag:
+        ds.X_train = [ds.X_train, segments_train]
+        ds.X_test = [ds.X_test, segments_test]
+        
+    #nb_classes = ds.nb_classes
+    '''
     # Calculate batch sizes as an array
+    
     batch_sizes_train, batch_sizes_val, batch_sizes_total = [], [], []
     (train_quotient, train_remainder) = divmod(ds.X_train.shape[0], batch_size)
     (test_quotient, test_remainder) = divmod(ds.X_test.shape[0], batch_size)
@@ -138,32 +202,8 @@ if __name__ == '__main__':
     print("batch sizes train ", batch_sizes_train)
     print("batch sizes val ", batch_sizes_val)
     print("batch sizes total ", batch_sizes_total)
-    # ===============
-    # LOAD model:
-    # ===============
+    '''
 
-    # for training:
-    num_crf_iterations = 5
-    model = load_model_gby(args.model, INPUT_SIZE, nb_classes, num_crf_iterations, args.finetune_path, batch_size, batch_sizes_train, batch_sizes_val, batch_sizes_total)
-
-    # if resuming training:
-    if (args.weights is not None) and (os.path.exists(args.weights)):
-        print("loading weights %s.."% args.weights)
-        model.load_weights(args.weights)
-
-    model.summary()
-    print('trining model %s..'% model.name)
-
-    # ===============
-    # LOAD sp segment:
-    # ===============
-    if model.sp_flag:
-        segments_train = load_segmentations(ds.segments_dir, ds.train_list, INPUT_SIZE)
-        segments_test = load_segmentations(ds.segments_dir, ds.test_list, INPUT_SIZE)
-        print("Loading superpixels segmentations:")
-        print(segments_train.shape, segments_test.shape)
-        ds.X_train = [ds.X_train, segments_train]
-        ds.X_test = [ds.X_test, segments_test]
 
     # ===============
     # TRAIN model:
@@ -189,11 +229,11 @@ if __name__ == '__main__':
     #pdb.set_trace()
     if model.crf_flag: # True:#
         model.compile(loss=weighted_loss(nb_classes, coefficients),
-                      optimizer=Adam(lr=0.032, beta_1=0.9, beta_2=0.999, epsilon=1e-08, decay=0.001),
+                      optimizer=Adam(lr=0.001, beta_1=0.9, beta_2=0.999, epsilon=1e-08, decay=0.001),
                       metrics=['accuracy'])
     else:
         print("using categorical crossentropy")
-        model.compile(loss='categorial_crossentropy', # weighted_loss(nb_classes, coefficients), # 'categorial_crossentropy',
+        model.compile(loss='categorical_crossentropy', # weighted_loss(nb_classes, coefficients), # 'categorical_crossentropy',
                       optimizer='sgd',
                       metrics=['accuracy'])
                       #callbacks=['csv_logger'])
@@ -205,7 +245,7 @@ if __name__ == '__main__':
         data_augmentation_flag = True  # False #
 
     #checkpoint = ModelCheckpoint(RES_DIR+"voc2012_sadeep_crf.{epoch:02d}-{val_loss:.2f}", save_weights_only=True,verbose=1, period=1)
-    checkpoint = ModelCheckpoint(RES_DIR+"horsecoarse_checkpt_crfrnn_start30.{epoch:02d}-{val_loss:.2f}", save_weights_only=True,verbose=1, period=1)
+    checkpoint = ModelCheckpoint(RES_DIR+"horsecoarse_checkpt_crfrnn_start30.{epoch:02d}-{val_loss:.2f}", save_weights_only=True,verbose=1, period=1000)
     cb_list = [checkpoint]
     
     if not data_augmentation_flag:

@@ -82,7 +82,7 @@ class CrfRnnLayer(Layer):
 
     def call(self, inputs):
         # Python lists for variables
-        unary_list, rgb_list, q_values_list = [], [], []
+        unary_list, rgb_list #, q_values_list = [], [], []
 
         # Add each input to a list
         for j in range(self.batch_size):
@@ -92,10 +92,10 @@ class CrfRnnLayer(Layer):
         unaries_tensor = tf.stack(unary_list)
         rgb_tensor = tf.stack(rgb_list)
 
-        #q_values_list = [0] * self.batch_size #tf.zeros(shape=(self.batch_size))
+        q_values_list = tf.zeros(shape=(self.batch_size,))
         # Iterate over each img in inputs
-        for k in range(self.batch_size):
-        #def while_body(index, q_values_list):
+        #for k in range(self.batch_size):
+        def while_body(k, q_values_list):
             unaries = unaries_tensor[k]
             rgb = rgb_tensor[k]
             
@@ -140,12 +140,12 @@ class CrfRnnLayer(Layer):
                 q_values = unaries - pairwise
                 
             #q_values_list[index] = q_values
-            q_values_list.append(q_values)
-            #return index+1, q_values_list
+            #q_values_list.append(q_values)
+            return k+1, q_values_list
 
-        #index = 0
-        #cond = lambda index, q_values_list: tf.less(index, self.batch_size)
-        #res = tf.while_loop(cond, while_body, [index, q_values_list], parallel_iterations=self.batch_size, back_prop=False)
+        index = 0
+        cond = lambda index, q_values_list: tf.less(index, self.batch_size)
+        res = tf.while_loop(cond, while_body, [index, q_values_list], parallel_iterations=self.batch_size, back_prop=False)
         l = tf.stack(q_values_list)
         print("l ", l)
         return tf.transpose(tf.reshape(l, (self.batch_size, self.num_classes, self.image_dims[0], self.image_dims[1])), perm=(0, 2, 3, 1))
