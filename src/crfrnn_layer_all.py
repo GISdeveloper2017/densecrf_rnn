@@ -817,7 +817,7 @@ class CrfRnnLayerSPAT(Layer):
                                                     initializer=_potts_model_initializer,
                                                     trainable=True)
 
-        super(CrfRnnLayerSPAT, self).build(input_shape)
+        #super(CrfRnnLayerSPAT, self).build(input_shape)
 
     def call(self, inputs):
         #unary_list, rgb_list, sp_list, q_values_list = [], [], [], [] # For loop
@@ -832,19 +832,46 @@ class CrfRnnLayerSPAT(Layer):
         rgb_tensor = tf.stack(rgb_list)
         sp_tensor = tf.stack(sp_list)
 
+        # Initialize some variables
+        c, h, w = self.num_classes, self.image_dims[0], self.image_dims[1]
+        all_ones = np.ones((c, h, w), dtype=np.float32)
+        spatial_norm_vals = custom_module.high_dim_filter(all_ones, rgb_tensor[0], bilateral=False,
+                                                          theta_gamma=self.theta_gamma)
+        bilateral_norm_vals = custom_module.high_dim_filter(all_ones, rgb_tensor[0], bilateral=True,
+                                                            theta_alpha=self.theta_alpha,
+                                                            theta_beta=self.theta_beta)
+        softmax_out = tf.nn.softmax(unaries_tensor[0], 0)
+        spatial_out_undiv = custom_module.high_dim_filter(softmax_out, rgb_tensor[0], bilateral=False,
+                                                          theta_gamma=self.theta_gamma)
+        spatial_out = spatial_out_undiv / spatial_norm_vals
+        bilateral_out_undiv = custom_module.high_dim_filter(softmax_out, rgb_tensor[0], bilateral=True,
+                                                            theta_alpha=self.theta_alpha,
+                                                            theta_beta=self.theta_beta)
+        bilateral_out = bilateral_out_undiv / bilateral_norm_vals
+        message_passing = (tf.matmul(self.spatial_ker_weights,
+                                     tf.reshape(spatial_out, (c, -1))) +
+                           tf.matmul(self.bilateral_ker_weights,
+                                     tf.reshape(bilateral_out, (c, -1)))
+        )
+
         #for k in range(self.batch_size):
         indexed_arr = np.ones(shape=(self.batch_size, self.num_classes, self.image_dims[0], self.image_dims[1]))
         for m in range(self.batch_size):
             indexed_arr[m] = m
         indexed_tensor = tf.convert_to_tensor(indexed_arr, np.float32)
         k = 0
-        cond = lambda k, q_values_tensor: tf.less(k, self.batch_size)
+        def cond(k, q_values_tensor, spatial_norm_vals, bilateral_norm_vals, spatial_out_undiv, spatial_out, bilateral_out_undiv, bilateral_out, message_passing, theta_gamma, theta_alpha, theta_beta, spatial_ker_weights, bilateral_ker_weights, compatibility_matrix, complex_rel_low_weights, complex_rel_high_weights):
+            return tf.less(k, self.batch_size)
         q_values_tensor = tf.zeros(shape=(self.batch_size, self.num_classes, self.image_dims[0], self.image_dims[1]))
-        def while_body(k, q_values_tensor):
+        sp_indices = [range(500) for i in range(self.num_iterations)]
+        def while_body(k, q_values_tensor, spatial_norm_vals, bilateral_norm_vals, spatial_out_undiv, spatial_out, bilateral_out_undiv, bilateral_out, message_passing, theta_gamma, theta_alpha, theta_beta, spatial_ker_weights, bilateral_ker_weights, compatibility_matrix, complex_rel_low_weights, complex_rel_high_weights):
             
             unaries = unaries_tensor[k]
+            #print(unaries)
             rgb = rgb_tensor[k]
+            #print(rgb)
             superpixel_cliques = sp_tensor[k]
+            #print(superpixel_cliques)
             
             c, h, w = self.num_classes, self.image_dims[0], self.image_dims[1]
             
@@ -853,29 +880,33 @@ class CrfRnnLayerSPAT(Layer):
             # Prepare filter normalization coefficients
             spatial_norm_vals = custom_module.high_dim_filter(all_ones, rgb, bilateral=False,
                                                               theta_gamma=self.theta_gamma)
+            #print(spatial_norm_vals)
             bilateral_norm_vals = custom_module.high_dim_filter(all_ones, rgb, bilateral=True,
                                                                 theta_alpha=self.theta_alpha,
                                                                 theta_beta=self.theta_beta)
+            #print(bilateral_norm_vals)
             q_values = unaries
 
-            sp_indices = [range(500) for i in range(self.num_iterations)]
+            #sp_indices = [range(500) for i in range(self.num_iterations)]
+            #'''
             for i in range(self.num_iterations):
                 softmax_out = tf.nn.softmax(q_values, 0)
                 
                 # Spatial filtering
-                spatial_out = custom_module.high_dim_filter(softmax_out, rgb, bilateral=False,
+                spatial_out_undiv = custom_module.high_dim_filter(softmax_out, rgb, bilateral=False,
                                                             theta_gamma=self.theta_gamma)
-                spatial_out = spatial_out / spatial_norm_vals
+                spatial_out = spatial_out_undiv / spatial_norm_vals
                 
                 # Bilateral filtering
-                bilateral_out = custom_module.high_dim_filter(softmax_out, rgb, bilateral=True,
+                bilateral_out_undiv = custom_module.high_dim_filter(softmax_out, rgb, bilateral=True,
                                                               theta_alpha=self.theta_alpha,
                                                               theta_beta=self.theta_beta)
-                bilateral_out = bilateral_out / bilateral_norm_vals
+                bilateral_out = bilateral_out_undiv / bilateral_norm_vals
                 
                 # compute containment potential update:
                 t0 = time.time()
                 attachment_update = _compute_superpixel_and_attachment_update(softmax_out, self.complex_rel_low_weights, self.complex_rel_high_weights, superpixel_cliques, sp_indices[i], c, h, w)
+                #print(attachment_update)
                 t1 = time.time()
                 #print("time ", t1-t0)
                 # Weighting filter outputs
@@ -892,20 +923,21 @@ class CrfRnnLayerSPAT(Layer):
                 pairwise = tf.reshape(pairwise, (c, h, w))
                 
                 q_values = unaries - pairwise - attachment_update
-
+            #'''
             #q_values_list.append(q_values)
+
             float_index = tf.to_float(k)
             cond_indexed = tf.equal(indexed_tensor, float_index)
             q_vals_stacked = tf.stack([q_values] * self.batch_size)
             q_vals_for_index = tf.multiply(tf.to_float(cond_indexed), q_vals_stacked)
             q_values_tensor += q_vals_for_index
-            return k + 1, q_values_tensor
+            return k + 1, q_values_tensor, spatial_norm_vals, bilateral_norm_vals, spatial_out_undiv, spatial_out, bilateral_out_undiv, bilateral_out, message_passing, self.theta_gamma, self.theta_alpha, self.theta_beta, self.spatial_ker_weights, self.bilateral_ker_weights, self.compatibility_matrix, self.complex_rel_low_weights, self.complex_rel_high_weights
 
-        res = tf.while_loop(cond, while_body, [k, q_values_tensor], parallel_iterations=self.batch_size, back_prop=False)
+        res = tf.while_loop(cond, while_body, [k, q_values_tensor, spatial_norm_vals, bilateral_norm_vals, spatial_out_undiv, spatial_out, bilateral_out_undiv, bilateral_out, message_passing, self.theta_gamma, self.theta_alpha, self.theta_beta, self.spatial_ker_weights, self.bilateral_ker_weights, self.compatibility_matrix, self.complex_rel_low_weights, self.complex_rel_high_weights], parallel_iterations=self.batch_size)
         return tf.transpose(tf.reshape(q_values_tensor, (self.batch_size, self.num_classes, self.image_dims[0], self.image_dims[1])), perm=(0,2,3,1))
         #l = tf.stack(q_values_list)
         #return tf.transpose(tf.reshape(l, (self.batch_size, self.num_classes, self.image_dims[0], self.image_dims[1])), perm=(0,2,3,1))
-        #return tf.transpose(tf.reshape(q_values, (1, c, h, w)), perm=(0, 2, 3, 1))
+        return tf.transpose(tf.reshape(q_values, (1, c, h, w)), perm=(0, 2, 3, 1))
 
     def compute_output_shape(self, input_shape):
         return input_shape
