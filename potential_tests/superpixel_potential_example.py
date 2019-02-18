@@ -1,4 +1,4 @@
-# sp tem
+# sp term
 import tensorflow as tf
 # may come in useful: tf.verify_tensor_all_finite
 import numpy as np
@@ -23,18 +23,18 @@ q_vals = tf.constant([[[0.9, 0.9, 0.9, 0.9, 0.9],
                        [0.4, 0.5, 0.9, 0.9, 0.9],
                        [0.7, 0.8, 0.8, 0.9, 0.9]]])
 
-q_vals_arr = [[[0.9, 0.9, 0.9, 0.9, 0.9],
-                       [0.9, 0.9, 0.9, 0.9, 0.9],
-                       [0.01, 0.01, 0.01, 0.01, 0.01],
-                       [0.01, 0.01, 0.01, 0.01, 0.01]],
-                      [[0.01, 0.01, 0.01, 0.01, 0.01],
-                       [0.01, 0.01, 0.01, 0.01, 0.01],
-                       [0.9, 0.9, 0.8, 0.7, 0.6],
-                       [0.9, 0.9, 0.81, 0.5, 0.4]],
-                      [[0.01, 0.01, 0.01, 0.01, 0.01],
-                       [0.01, 0.01, 0.01, 0.01, 0.01],
-                       [0.4, 0.5, 0.9, 0.9, 0.9],
-                       [0.7, 0.8, 0.8, 0.9, 0.9]]]
+q_vals_arr = [[[0.91, 0.92, 0.93, 0.94, 0.95],
+               [0.96, 0.97, 0.98, 0.99, 0.999],
+               [0.01, 0.01, 0.01, 0.01, 0.01],
+               [0.01, 0.01, 0.01, 0.01, 0.01]],
+              [[0.01, 0.01, 0.01, 0.01, 0.01],
+               [0.01, 0.01, 0.01, 0.01, 0.01],
+               [0.9, 0.9, 0.8, 0.7, 0.6],
+               [0.9, 0.9, 0.81, 0.5, 0.4]],
+              [[0.000001, 0.000001, 0.000001, 0.000001, 0.000001],
+               [0.000001, 0.000001, 0.000001, 0.000001, 0.000001],
+               [0.4, 0.5, 0.9, 0.9, 0.9],
+               [0.7, 0.8, 0.8, 0.9, 0.9]]]
 
 # In this case the sp boundary is the same as the sp_map (treated exactly the same way as sp_map)
 sp_map = tf.constant([[1,1,1,2,2],
@@ -81,7 +81,46 @@ w_low_m = tf.constant([[0.1,0.,0.],
 
 prod_tensor = tf.zeros(shape=q_vals.shape)
 
-for sp_indx in range(1,length+1):
+# With logs
+for sp_indx in range(1,6):
+    # This will put True where sp index is sp_indx, False otherwise:
+    cond_sp_indx = tf.equal(extended_sp_map,sp_indx)
+    #print(s.run(cond_sp_indx))
+    
+    # put 1 in q_vqls if not belongs to sp_indx:
+    A = tf.multiply(tf.to_float(cond_sp_indx), q_vals) + tf.to_float(tf.logical_not(cond_sp_indx))
+    #print(s.run(A))
+    # compute the product for each cell:
+    B = tf.reduce_sum(tf.log(A), [1,2])
+    #print(s.run(B))
+    # Create a tensor where each cell contains the product for its superpiel sp_indx and its label l:
+    C1 = tf.stack([B]*(rows*cols))
+    print(s.run(C1))
+    C2 = tf.reshape(tf.transpose(C1), (nb_classes, rows, cols))
+    print(s.run(C2))
+    C3 = tf.multiply(tf.to_float(cond_sp_indx), C2)
+    print(s.run(C3))
+
+    # add this to the overall product tensor; each cell contains the 'product' for its update rule:
+    prod_tensor += tf.multiply(tf.to_float(cond_sp_indx), C3)
+
+print(s.run(prod_tensor))
+# the actual product: we need to divide it by the current q_vals
+#first_term = tf.divide(tf.to_float(prod_tensor), q_vals)
+#print(s.run(first_term))
+first_term = tf.subtract(tf.to_float(prod_tensor), tf.log(q_vals))
+first_term_exp = tf.exp(first_term)
+#print(s.run(first_term_exp))
+first_term_resp = tf.matmul(w_low_m,tf.reshape(first_term_exp, (nb_classes,-1)))
+#first_term_resp = tf.matmul(w_low_m, tf.reshape(first_term, (nb_classes, -1)))
+#print(s.run(first_term_resp))
+first_term_resp_back = tf.reshape(first_term_resp, (nb_classes, 4, 5))
+sp_out =  first_term_resp_back + w_high * (tf.ones(shape=first_term.shape) - first_term_exp)
+
+print(s.run(sp_out))
+
+''' Without logs
+for sp_indx in range(1,6):
     # This will put True where sp index is sp_indx, False otherwise:
     cond_sp_indx = tf.equal(extended_sp_map,sp_indx)
     # put 1 in q_vqls if not belongs to sp_indx:
@@ -97,12 +136,12 @@ for sp_indx in range(1,length+1):
     prod_tensor += tf.multiply(tf.to_float(cond_sp_indx), C)
 
 # the actual product: we need to divide it by the current q_vals
-first_term = tf.divide(tf.to_float(prod_tensor),q_vals)
-first_term_resp = tf.matmul(w_low_m,tf.reshape(first_term, (nb_classes,-1)))
+first_term = tf.divide(tf.to_float(prod_tensor), q_vals)
+first_term_resp = tf.matmul(w_low_m, tf.reshape(first_term, (nb_classes, -1)))
 first_term_resp_back = tf.reshape(first_term_resp, (nb_classes, 4, 5))
 sp_out =  first_term_resp_back + w_high * (tf.ones(shape=first_term.shape) - first_term)
-print("Using tensors")
 print(s.run(sp_out))
+'''
 
 '''
 # Containment Update with for loops
