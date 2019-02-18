@@ -54,10 +54,9 @@ def _compute_superpixel_update(q_values,superpixel_low_weights,superpixel_high_w
     #for l in range(1):
     #    superpixel_cliques = tf.Print(superpixel_cliques, [superpixel_cliques], message="sp_map ", summarize=224)
     #for l in range(1):
-    #    q_values = tf.Print(q_values, [q_values], message="q_values ", summarize=224)
+    #    q_values = tf.Print(q_values, [q_values], message="q_values ", summarize=30)
     
     # replicate the sp_map m times and have the shape of [rows,cols,m], where m is the number of labels
-    #extended_sp_map = tf.stack([sp_map] * c)
     extended_sp_map = tf.tile(tf.reshape(superpixel_cliques, [1, h, w]), [c, 1, 1])
     #for l in range(1):
     #    extended_sp_map = tf.Print(extended_sp_map, [extended_sp_map[l]], message="ext sp map ", summarize=5)
@@ -65,30 +64,21 @@ def _compute_superpixel_update(q_values,superpixel_low_weights,superpixel_high_w
     def while_body(index, prod_tensor):
         sp_indx = tf.to_float(index)
         cond_sp_indx = tf.equal(extended_sp_map, sp_indx)
-        q_val_for_sp = tf.multiply(tf.to_float(cond_sp_indx), q_values) + tf.to_float(tf.logical_not(cond_sp_indx))
-        #clip = tf.clip_by_value(q_val_for_sp,1e-10,1.0)
+        # Adding epsilon = 0.00001 to q_values before taking log, to prevent nan
+        q_val_for_sp = tf.multiply(tf.to_float(cond_sp_indx), q_values + 0.00001) + tf.to_float(tf.logical_not(cond_sp_indx))
 
         #for l in range(1):
-            #q_val_for_sp = tf.Print(q_val_for_sp, [q_val_for_sp], message="q val for sp ", summarize=224)
+        #    q_val_for_sp = tf.Print(q_val_for_sp, [q_val_for_sp], message="q val for sp ", summarize=224)
 
         B = tf.reduce_sum(tf.log(q_val_for_sp), axis=[1,2])
-
-        for l in range(1):
-            B = tf.Print(B, [B], message = "B ", summarize=6)
+        #B = tf.reduce_prod(q_val_for_sp, axis=[1,2])
+        #for l in range(1):
+        #    B = tf.Print(B, [B], message = "B ", summarize=6)
             
-        C1 = tf.tile(tf.reshape(B, [1,6]), [h*w, 1])
-        for l in range(1):
-            C1 = tf.Print(C1, [C1], message = "C1 ", summarize=10)
-            
-        C2 = tf.reshape(tf.transpose(C1), (c,h,w)) # results in all being the first value
-        #C2 = tf.reshape(C1, (c, h, w))
-        for l in range(1):
-            C2 = tf.Print(C2, [C2], message = "C2 ", summarize=10)
-            
+        C1 = tf.tile(tf.reshape(B, [1,6]), [h*w, 1])    
+        C2 = tf.reshape(tf.transpose(C1), (c,h,w))
         C3 = tf.to_float(tf.multiply(tf.to_float(cond_sp_indx), C2))
-        for l in range(1):
-            C3 = tf.Print(C3, [C3], message = "C3 ", summarize=10)
-            
+
         prod_tensor += C3
         #prod_tensor = tf.Print(prod_tensor, [prod_tensor])
         return index+1, prod_tensor
@@ -99,43 +89,42 @@ def _compute_superpixel_update(q_values,superpixel_low_weights,superpixel_high_w
     cond = lambda i, prod_tensor: tf.less(i, len(sp_indices))
     i, prod_tensor = tf.while_loop(cond, while_body, [i, prod_tensor], parallel_iterations=len(sp_indices))
 
-    for l in range(1):
-        prod_tensor = tf.Print(prod_tensor, [prod_tensor], message = "prod_tensor ", summarize=30)
+    #for l in range(1):
+    #    prod_tensor = tf.Print(prod_tensor, [prod_tensor], message = "prod_tensor ", summarize=30)
 
-    #pdb.set_trace()
     # and now the update rule for superpixel
     # the actual product: we need to divide it by the current q_vals
-    bool_sum_zero = tf.equal(q_values, 0)
+    #bool_sum_zero = tf.equal(q_values, 0)
     
     #for l in range(1):
     #    bool_sum_zero = tf.Print(bool_sum_zero, [bool_sum_zero[l]], message= "bool sum zero ", summarize=5)
 
-    bool_sum_one = tf.to_float(bool_sum_zero)
+    #bool_sum_one = tf.to_float(bool_sum_zero)
     
     #for l in range(1):
     #    bool_sum_one = tf.Print(bool_sum_one, [bool_sum_one[l]], message= "bool sum one ", summarize=5)
-    q_values_modified = q_values + bool_sum_one
+    #q_values_modified = q_values + bool_sum_one
     
     #for l in range(1):
     #    q_values_modified = tf.Print(q_values_modified, [q_values_modified[l]], message= "q vals modified ", summarize=5)
-    
     #first_term = tf.divide(tf.to_float(prod_tensor), q_values_modified)
-    first_term_unexp = tf.subtract(tf.to_float(prod_tensor), tf.log(q_values))
+    # adding epsilon = 0.00001 to q_vals before taking log, to prevent nan
+    first_term_unexp = tf.subtract(tf.to_float(prod_tensor), tf.log(q_values+ 0.00001))
     first_term = tf.exp(first_term_unexp)
     
-    for l in range(1):
-        first_term = tf.Print(first_term, [first_term[l]], message= "first term ", summarize=30)
+    #for l in range(1):
+    #    first_term = tf.Print(first_term, [first_term[l]], message= "first term ", summarize=30)
     
     # multiply by weights:
-    #superpixel_low_weights_duplicated = tf.transpose(tf.stack([superpixel_low_weights] * (h * w)))
     superpixel_low_weights_duplicated = tf.transpose(tf.tile(tf.reshape(superpixel_low_weights, [1,6]), [h*w, 1]))
     first_term_resp = tf.multiply(superpixel_low_weights_duplicated, tf.reshape(first_term, (c, -1)))
     first_term_resp_back = tf.reshape(first_term_resp, (c, h, w))
 
     superpixel_update = first_term_resp_back + superpixel_high_weights * (tf.ones(shape=(c, h, w)) - first_term)
-    for l in range(1):
-        superpixel_update = tf.Print(superpixel_update, [superpixel_update], message="sp update ", summarize=30)
-    #clip = tf.clip_by_value(superpixel_update,1e-10,1.0)
+    #for l in range(1):
+    #    superpixel_update = tf.Print(superpixel_update, [superpixel_update], message="sp update ", summarize=30)
+    #To avoid nan in final update, can clip
+    #clip = tf.clip_by_value(superpixel_update,low,high)
     return superpixel_update
 
 def _compute_containment_update(q_values,containment_low_weights,containment_high_weights,bd_map, sp_indices, c, h, w ):
@@ -649,7 +638,7 @@ class CrfRnnLayerSP(Layer):
 
         unaries = tf.transpose(inputs[0][0, :, :, :], perm=(2, 0, 1)) # the fcn_scores
         rgb = tf.transpose(inputs[1][0, :, :, :], perm=(2, 0, 1)) # the raw rgb
-        superpixel_cliques = inputs[2][0,:,:]
+        superpixel_cliques = tf.transpose(inputs[2][0,:,:])
 
         c, h, w = self.num_classes, self.image_dims[0], self.image_dims[1]
 
@@ -663,8 +652,8 @@ class CrfRnnLayerSP(Layer):
                                                             theta_beta=self.theta_beta)
         q_values = unaries
 
-        #sp_indices = [range(500) for i in range(self.num_iterations)]
-        sp_indices=[range(1) for i in range(self.num_iterations)]
+        sp_indices = [range(500) for i in range(self.num_iterations)]
+        #sp_indices=[range(1) for i in range(self.num_iterations)]
         t2 = time.time()
         for i in range(self.num_iterations):
             softmax_out = tf.nn.softmax(q_values, 0)
