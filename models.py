@@ -459,7 +459,7 @@ def fcn_RESNET50_32s_crfrnn(INPUT_SIZE,nb_classes,num_crf_iterations):
     # Fixing weighs in lower layers (optional)
     # for layer in model.layers[:-1]:  # 15,21,29 (overall 30 layers)
     #     layer.trainable = True
-    # return model
+    return model
 
 
 
@@ -589,8 +589,8 @@ def fcn_RESNET50_8s_crfrnn(INPUT_SIZE,nb_classes,num_crf_iterations,finetune_pat
     model = Model(inputs=inputs, outputs=crfrnn_output, name='fcn_RESNET50_8s_crfrnn')
 
     # Fixing weighs in lower layers (optional)
-    for layer in model.layers[:181]: #181]:  # 15,21,29 (overall 30 layers) feezing until layer pred 8 (182)
-        layer.trainable = False
+    #for layer in model.layers[:181]: #181]:  # 15,21,29 (overall 30 layers) feezing until layer pred 8 (182)
+    #    layer.trainable = False
 
     return model
 
@@ -663,14 +663,14 @@ def fcn_RESNET50_8s_crfrnnSPIO(INPUT_SIZE,nb_classes,num_crf_iterations,finetune
     model = Model(inputs=[img_input, seg_input], outputs=crfrnn_output, name='fcn_RESNET50_8s_crfrnnSPIO')
 
     # Fixing weighs in lower layers (optional)
-    for layer in model.layers[:-1]: #[:181]:  # 15,21,29 (overall 30 layers) feezing until layer pred 8 (182)
-        layer.trainable = False
+    #for layer in model.layers[:-1]: #[:181]:  # 15,21,29 (overall 30 layers) feezing until layer pred 8 (182)
+    #    layer.trainable = False
 
     return model
 
 
 def fcn_RESNET50_8s_crfrnnSPAT(INPUT_SIZE,nb_classes,num_crf_iterations,finetune_path, batch_size):
-    """ Returns Keras FCN-8 + CRFRNNlayer with SP term and Inside/outside term, based on ResNet50 model definition.
+    """ Returns Keras FCN-8 + CRFRNNlayer with SP term and attachment term, based on ResNet50 model definition.
 
     """
     fcn = fcn_RESNET50_8s(INPUT_SIZE, nb_classes)
@@ -692,15 +692,15 @@ def fcn_RESNET50_8s_crfrnnSPAT(INPUT_SIZE,nb_classes,num_crf_iterations,finetune
                                 theta_alpha=160.,
                                 theta_beta=90.,
                                 theta_gamma=3.,
-                                    batch_size=batch_size,
+                                batch_size=batch_size,
                                 num_iterations=num_crf_iterations,  # 10 for test, 5 for train
                                 name='crfrnn')([fcn_score, img_input, seg_input])
 
     model = Model(inputs=[img_input, seg_input], outputs=crfrnn_output, name='fcn_RESNET50_8s_crfrnnSPAT')
 
     # Fixing weighs in lower layers (optional)
-    for layer in model.layers[:-1]: #[:181]:  # 15,21,29 (overall 30 layers) feezing until layer pred 8 (182)
-        layer.trainable = False
+    #for layer in model.layers[:-1]: #[:181]:  # 15,21,29 (overall 30 layers) feezing until layer pred 8 (182)
+    #    layer.trainable = False
 
     return model
 
@@ -735,8 +735,8 @@ def fcn_RESNET50_8s_crfrnnSPIOAT(INPUT_SIZE,nb_classes,num_crf_iterations,finetu
     model = Model(inputs=[img_input, seg_input], outputs=crfrnn_output, name='fcn_RESNET50_8s_crfrnnSPIOAT')
 
     # Fixing weighs in lower layers (optional)
-    for layer in model.layers[:-1]: #181]:  # 15,21,29 (overall 30 layers) feezing until layer pred 8 (182)
-        layer.trainable = False
+    #for layer in model.layers[:-1]: #181]:  # 15,21,29 (overall 30 layers) feezing until layer pred 8 (182)
+    #    layer.trainable = False
 
     return model
 
