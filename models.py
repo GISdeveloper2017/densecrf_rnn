@@ -579,19 +579,16 @@ def fcn_RESNET50_8s_crfrnn(INPUT_SIZE,nb_classes,num_crf_iterations,finetune_pat
                                 theta_alpha=160.,
                                 theta_beta=90.,
                                 theta_gamma=3.,
-                                batch_size = batch_size,
-                                #batch_sizes_train = batch_sizes_train,
-                                #batch_sizes_val = batch_sizes_val,
-                                #batch_sizes_total = batch_sizes_total,
+                                batch_size=batch_size,
                                 num_iterations=num_crf_iterations,  # 10 for test, 5 for train
                                 name='crfrnn')([fcn_score, inputs])
 
     model = Model(inputs=inputs, outputs=crfrnn_output, name='fcn_RESNET50_8s_crfrnn')
 
     # Fixing weighs in lower layers (optional)
-    #for layer in model.layers[:181]: #181]:  # 15,21,29 (overall 30 layers) feezing until layer pred 8 (182)
-    #    layer.trainable = False
-
+    for layer in model.layers[:160]:
+        layer.trainable = False
+    
     return model
 
 
@@ -615,20 +612,20 @@ def fcn_RESNET50_8s_crfrnnSP(INPUT_SIZE,nb_classes,num_crf_iterations,finetune_p
     # Adding the crfrnn layer:
     height, weight = INPUT_SIZE, INPUT_SIZE
     crfrnn_output = CrfRnnLayerSP(image_dims=(height, weight),
-                                  num_classes=nb_classes,
-                                  theta_alpha=160.,
-                                  theta_beta=90.,
-                                  theta_gamma=3.,
-                                  batch_size=batch_size,
-                                  num_iterations=num_crf_iterations,  # 10 for test, 5 for train
-                                  name='crfrnn')([fcn_score, img_input, seg_input])
+                                num_classes=nb_classes,
+                                theta_alpha=160.,
+                                theta_beta=90.,
+                                theta_gamma=3.,
+                                batch_size=batch_size,
+                                num_iterations=num_crf_iterations,  # 10 for test, 5 for train
+                                name='crfrnn')([fcn_score, img_input, seg_input])
 
     model = Model(inputs=[img_input, seg_input], outputs=crfrnn_output, name='fcn_RESNET50_8s_crfrnnSP')
 
 
     # Fixing weighs in lower layers (optional)
-    # for layer in model.layers[:-1]: #[:181]:  # 15,21,29 (overall 30 layers) feezing until layer pred 8 (182)
-    #     layer.trainable = False
+    for layer in model.layers[:160]: #[:181]:
+        layer.trainable = False
 
     return model
 

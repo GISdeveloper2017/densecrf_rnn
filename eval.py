@@ -117,7 +117,7 @@ if __name__ == '__main__':
     shape = (INPUT_SIZE, INPUT_SIZE)
     n_classes = nb_classes # 10
 
-    #'''
+    '''
     # Save results to folders
     for i in range(len(y_predi)):
         fig = plt.figure()
@@ -127,16 +127,16 @@ if __name__ == '__main__':
         if args.dataset == "voc2012":
             plt.savefig("image_results/pascal_voc/fcn_pred/"+ str(i)+ ".jpg")
         elif args.dataset == "horsecoarse" or args.dataset == "horsecoarse_small":
-            plt.savefig("image_results/horse_coarse/pred_oneimg/"+ str(i)+ ".jpg")
+            plt.savefig("image_results/horse_coarse/pred_CRFSP100ep/"+ str(i)+ ".jpg")
         fig = plt.figure()
         segtest = y_testi[i]
         ax = fig.add_subplot(111)
         ax.imshow(give_color_to_seg_img(segtest, n_classes))
-        if args.dataset == "voc2012":
-            plt.savefig("image_results/pascal_voc/fcn_gt/"+ str(i)+ ".jpg")
-        elif args.dataset == "horsecoarse" or args.dataset == "horsecoarse_small":
-            plt.savefig("image_results/horse_coarse/gt_oneimg/"+ str(i)+ ".jpg")
-    #'''
+        #if args.dataset == "voc2012":
+        #    plt.savefig("image_results/pascal_voc/fcn_gt/"+ str(i)+ ".jpg")
+        #elif args.dataset == "horsecoarse" or args.dataset == "horsecoarse_small":
+        #    plt.savefig("image_results/horse_coarse/gt_SPDEBUG1ep/"+ str(i)+ ".jpg")
+    '''
     # clear model: Destroys the current TF graph and creates a new one. Useful to avoid clutter from old models / layers.
     keras.backend.clear_session()
     

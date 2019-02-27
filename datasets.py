@@ -2,7 +2,7 @@
 import os
 import numpy as np
 #from utils_gby import generate_arrays_from_file,extract_arrays_from_file,IoU,model_predict_gby,getImageArr,getSegmentationArr,dir2list
-from utils import dir2list,extract_arrays_from_file,generate_arrays_from_file
+from utils_gby_new import dir2list,extract_arrays_from_file,generate_arrays_from_file
 from sklearn.utils import shuffle
 #from random import shuffle
 
@@ -119,7 +119,7 @@ def voc2012(INPUT_SIZE, dataaug_args):
 
     return ds
 
-def horsecoarse(INPUT_SIZE,dataaug_args):
+def horsecoarse(INPUT_SIZE,dataaug_args, batch_size):
 
     nb_classes = 5+1
     #horse: head, tail, torso, upper legs, lower legs
@@ -129,7 +129,29 @@ def horsecoarse(INPUT_SIZE,dataaug_args):
     #image_dir = "/storage/gby/datasets/horse_coarse_parts/images_orig/"
     image_dir = '/storage/gby/datasets/pascal_voc12/images_orig/'
     label_dir = '/storage/gby/datasets/horse_coarse_parts/labels_orig/'
-    segments_dir = '/storage/gby/datasets/horse_coarse_parts/sp_seg/'
+    segments_dir = '/storage/cfmata/deeplab/crf_rnn/crfasrnn_keras/data/horse_coarse_parts/sp_seg/'
+
+    ds = split_from_list(train_data, val_data, image_dir, label_dir, INPUT_SIZE, nb_classes, dataaug_args)
+
+    ds.segments_dir = segments_dir
+    ds.train_list = train_data
+    ds.test_list = val_data
+    ds.datagen_train = generate_arrays_from_file(train_data, image_dir, label_dir, INPUT_SIZE,nb_classes, dataaug_args)
+    ds.datagen_test = generate_arrays_from_file(val_data, image_dir, label_dir, INPUT_SIZE, nb_classes, None)
+
+    return ds
+
+def horsecoarse_small(INPUT_SIZE,dataaug_args, batch_size):
+
+    nb_classes = 5+1
+    #horse: head, tail, torso, upper legs, lower legs
+
+    train_data = 'lst/horsecoarse_train_small.txt'
+    val_data = 'lst/horsecoarse_test_small.txt'
+    #image_dir = "/storage/gby/datasets/horse_coarse_parts/images_orig/"
+    image_dir = '/storage/gby/datasets/pascal_voc12/images_orig/'
+    label_dir = '/storage/gby/datasets/horse_coarse_parts/labels_orig/'
+    segments_dir = '/storage/cfmata/deeplab/crf_rnn/crfasrnn_keras/data/horse_coarse_parts/sp_seg/'
 
     ds = split_from_list(train_data, val_data, image_dir, label_dir, INPUT_SIZE, nb_classes, dataaug_args)
 
@@ -172,7 +194,7 @@ def personcoarse(INPUT_SIZE, dataaug_args):
     #image_dir = "/storage/gby/datasets/horse_coarse_parts/images_orig/"
     image_dir = '/storage/gby/datasets/pascal_voc12/images_orig/'
     label_dir = '/storage/gby/datasets/person_coarse_parts/labels_orig/'
-    segments_dir = ''
+    segments_dir = '/storage/cfmata/deeplab/crf_rnn/crfasrnn_keras/data/person_coarse_parts/sp_seg/'
 
     ds = split_from_list(train_data, val_data, image_dir, label_dir, INPUT_SIZE, nb_classes, dataaug_args)
 
@@ -193,7 +215,7 @@ def personfine(INPUT_SIZE, dataaug_args):
     #image_dir = "/storage/gby/datasets/horse_coarse_parts/images_orig/"
     image_dir = '/storage/gby/datasets/pascal_voc12/images_orig/'
     label_dir = '/storage/gby/datasets/person_fine_parts/labels_orig/'
-    segments_dir = ''
+    segments_dir = '/storage/cfmata/deeplab/crf_rnn/crfasrnn_keras/data/person_fine_parts/sp_seg/'
 
     ds = split_from_list(train_data, val_data, image_dir, label_dir, INPUT_SIZE, nb_classes, dataaug_args)
 
@@ -235,7 +257,7 @@ def horsecoarsedbg(INPUT_SIZE,dataaug_args):
 # load:
 # ===================
 
-def load_dataset(ds_name,INPUT_SIZE, dataaug_args):
+def load_dataset(ds_name,INPUT_SIZE, dataaug_args, batch_size):
 
     print('loading dataset : %s..'% ds_name)
 
@@ -246,7 +268,10 @@ def load_dataset(ds_name,INPUT_SIZE, dataaug_args):
         ds = voc2012(INPUT_SIZE, dataaug_args)
 
     elif ds_name == 'horsecoarse':
-        ds = horsecoarse(INPUT_SIZE, dataaug_args)
+        ds = horsecoarse(INPUT_SIZE, dataaug_args, batch_size)
+
+    elif ds_name == 'horsecoarse_small':
+        ds = horsecoarse_small(INPUT_SIZE, dataaug_args, batch_size)
 
     elif ds_name == 'horsefine':
         ds = horsefine(INPUT_SIZE, dataaug_args)
